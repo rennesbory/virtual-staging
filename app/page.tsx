@@ -26,7 +26,8 @@ type Style = (typeof STYLES)[number];
 
 const STEPS = [
   "Uploading image...",
-  "Staging room with AI...",
+  "Analyzing space...",
+  "Placing furniture...",
 ];
 
 export default function Home() {

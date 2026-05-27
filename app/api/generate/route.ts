@@ -10,7 +10,7 @@ fal.config({
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type StagingOutput = {
+type InpaintingOutput = {
   images: { url: string; width: number; height: number }[];
   seed: number;
 };
@@ -58,23 +58,23 @@ const STYLE_PROMPTS: Record<string, string> = {
 
 const ROOM_PROMPTS: Record<string, string> = {
   "Living Room":
-    "living room with large sectional sofa, statement coffee table, " +
-    "layered area rugs, floor lamp, organic side tables, decorative objects, art",
+    "large sectional sofa, statement coffee table, " +
+    "layered area rugs, sculptural floor lamp, organic side tables, decorative objects, framed art",
   Bedroom:
-    "bedroom with upholstered platform bed, linen bedding, " +
-    "nightstands with table lamps, low dresser, accent armchair",
+    "upholstered platform bed with linen bedding, " +
+    "nightstands with table lamps, low dresser, accent armchair in corner",
   Kitchen:
-    "kitchen with upholstered bar stools at island, " +
-    "woven rattan pendant lights, fresh herb pots, curated ceramics on counter",
+    "upholstered counter stools at kitchen island, " +
+    "pendant lights above island, fresh herb pots on counter, curated ceramic objects on shelves",
   "Dining Room":
-    "dining room with solid wood dining table, upholstered dining chairs, " +
-    "sculptural chandelier, credenza, botanical table centerpiece",
+    "solid wood dining table with upholstered dining chairs, " +
+    "sculptural chandelier above table, sideboard against wall, botanical centerpiece",
   Office:
-    "home office with executive desk, leather task chair, " +
-    "floor-to-ceiling shelving with curated books, sculptural task lamp",
+    "executive desk with leather task chair, " +
+    "floor-to-ceiling shelving with curated books, sculptural task lamp, potted plant",
   Bathroom:
-    "bathroom with freestanding soaking tub, stone vanity accessories, " +
-    "rolled linen towels, architectural candles, potted orchid",
+    "freestanding soaking tub, stone vanity accessories, " +
+    "rolled linen towels on rack, architectural candles, potted orchid",
 };
 
 const BASE_QUALITY =
@@ -83,64 +83,53 @@ const BASE_QUALITY =
   "soft diffused natural daylight, warm ambient shadows, " +
   "professional luxury real estate photography for 10 million dollar property";
 
-// ─── Depth-guided compositing ─────────────────────────────────────────────────
+// ─── Floor Mask from Depth Map ────────────────────────────────────────────────
 //
-// Midas depth convention: bright = near camera, dark = far.
-//   Near (bright) = floor / foreground  → use STAGED  (furniture lives here)
-//   Far  (dark)   = walls / cabinets    → use ORIGINAL (preserve structure)
-//   Top 20%       = ceiling             → always ORIGINAL
+// Midas depth convention: bright = near camera (floor), dark = far (walls/ceiling)
+// Inpainting mask: white (255) = AI modifies here, black (0) = preserve original
 //
-// Smooth blend in the transition zone to avoid hard seams.
+// Result: AI only touches the floor area — walls, cabinets, ceiling are
+// pixel-perfect original (not even blended, literally untouched).
 //
-async function compositeWithDepth(
-  originalBuffer: Buffer,
-  stagedUrl: string,
+async function generateFloorMask(
   depthUrl: string,
   W: number,
   H: number
 ): Promise<Buffer> {
-  const [stagedBuf, depthBuf] = await Promise.all([
-    fetch(stagedUrl).then((r) => r.arrayBuffer()).then(Buffer.from),
-    fetch(depthUrl).then((r) => r.arrayBuffer()).then(Buffer.from),
-  ]);
+  const depthBuf = await fetch(depthUrl)
+    .then((r) => r.arrayBuffer())
+    .then(Buffer.from);
 
-  const [origRaw, stagedRaw, depthRaw] = await Promise.all([
-    sharp(originalBuffer).resize(W, H).removeAlpha().raw().toBuffer(),
-    sharp(stagedBuf).resize(W, H).removeAlpha().raw().toBuffer(),
-    sharp(depthBuf).resize(W, H).greyscale().raw().toBuffer(),
-  ]);
+  const depthRaw = await sharp(depthBuf)
+    .resize(W, H)
+    .greyscale()
+    .raw()
+    .toBuffer();
 
-  const out = Buffer.alloc(W * H * 3);
+  const maskRaw = Buffer.alloc(W * H);
 
   for (let i = 0; i < W * H; i++) {
-    const p = i * 3;
     const y = Math.floor(i / W);
     const yRatio = y / H;
-    const d = depthRaw[i]; // 0–255  bright = near = floor
-
-    let t: number; // 0 = full original, 1 = full staged
+    const d = depthRaw[i]; // 0–255, bright = near = floor
 
     if (yRatio < 0.20) {
-      // Ceiling band — always original
-      t = 0;
-    } else if (d >= 90) {
-      // Bright foreground (floor / furniture zone) — use staged
-      t = 1;
+      // Ceiling band — always preserve
+      maskRaw[i] = 0;
+    } else if (d >= 85) {
+      // Floor / foreground — inpaint here (furniture goes here)
+      maskRaw[i] = 255;
     } else if (d >= 55) {
-      // Transition zone — smooth linear blend
-      t = (d - 55) / 35;
+      // Soft transition edge — feather the boundary
+      maskRaw[i] = Math.round(((d - 55) / 30) * 255);
     } else {
-      // Dark background (walls, cabinets, windows) — use original
-      t = 0;
+      // Walls / cabinets / background — preserve original pixel
+      maskRaw[i] = 0;
     }
-
-    out[p]     = Math.round(origRaw[p]     * (1 - t) + stagedRaw[p]     * t);
-    out[p + 1] = Math.round(origRaw[p + 1] * (1 - t) + stagedRaw[p + 1] * t);
-    out[p + 2] = Math.round(origRaw[p + 2] * (1 - t) + stagedRaw[p + 2] * t);
   }
 
-  return sharp(out, { raw: { width: W, height: H, channels: 3 } })
-    .jpeg({ quality: 95 })
+  return sharp(maskRaw, { raw: { width: W, height: H, channels: 1 } })
+    .png()
     .toBuffer();
 }
 
@@ -148,8 +137,9 @@ async function compositeWithDepth(
 //
 // Pipeline:
 //   1. Upload original image
-//   2. [PARALLEL] apartment-staging + depth map generation
-//   3. Depth-guided compositing (original structure + staged furniture)
+//   2. Depth map → floor mask (auto-detect floor area)
+//   3. Flux inpainting — furniture generated in floor area only
+//      Walls / cabinets / ceiling = 100% original (mask black = untouched)
 //
 export async function POST(req: NextRequest) {
   try {
@@ -176,71 +166,59 @@ export async function POST(req: NextRequest) {
     );
     console.log(`[1/3] ✓ ${W}×${H}`);
 
-    // ── Step 2: Parallel — staging + depth ──────────────────────────────────
-    console.log("[2/3] Staging + depth (parallel)...");
+    // ── Step 2: Depth map → floor mask ──────────────────────────────────────
+    console.log("[2/3] Depth map + floor mask...");
+    const depthResult = await fal.subscribe("fal-ai/imageutils/depth", {
+      input: { image_url: imageUrl },
+    });
 
-    const prompt =
-      `Furnish this room. ${ROOM_PROMPTS[roomType] ?? ROOM_PROMPTS["Living Room"]}. ` +
-      `${STYLE_PROMPTS[style] ?? STYLE_PROMPTS["Modern"]}. ` +
-      `${BASE_QUALITY}.`;
-
-    const [stagingResult, depthResult] = await Promise.all([
-      fal.subscribe("fal-ai/flux-2-lora-gallery/apartment-staging", {
-        input: {
-          image_urls: [imageUrl],
-          prompt,
-          lora_scale: 1,
-          guidance_scale: 3.5,
-          num_inference_steps: 40,
-          num_images: 1,
-          output_format: "jpeg",
-        },
-        logs: true,
-      }),
-      fal.subscribe("fal-ai/imageutils/depth", {
-        input: { image_url: imageUrl },
-      }),
-    ]);
-
-    const stagedUrl = (stagingResult.data as StagingOutput).images?.[0]?.url;
     const depthUrl = (depthResult.data as DepthOutput).image?.url;
-
-    if (!stagedUrl) {
+    if (!depthUrl) {
       return NextResponse.json(
-        { error: "Staging failed" },
+        { error: "Depth map failed" },
         { status: 500 }
       );
     }
 
-    console.log("[2/3] ✓ Staged:", stagedUrl);
-    console.log("[2/3] ✓ Depth:", depthUrl);
+    const maskBuffer = await generateFloorMask(depthUrl, W, H);
+    const maskUrl = await fal.storage.upload(
+      new File([maskBuffer.buffer as ArrayBuffer], "floor-mask.png", {
+        type: "image/png",
+      })
+    );
+    console.log("[2/3] ✓ Floor mask ready");
 
-    // ── Step 3: Composite — original structure + staged furniture ────────────
-    // If depth map unavailable, fall back to staged image directly
-    if (!depthUrl) {
-      console.log("[3/3] No depth map — returning staged directly");
-      return NextResponse.json({ imageUrl: stagedUrl });
+    // ── Step 3: Inpainting — furniture in masked floor area only ─────────────
+    console.log("[3/3] Inpainting furniture...");
+    const prompt =
+      `${ROOM_PROMPTS[roomType] ?? ROOM_PROMPTS["Living Room"]}. ` +
+      `${STYLE_PROMPTS[style] ?? STYLE_PROMPTS["Modern"]}. ` +
+      `${BASE_QUALITY}.`;
+
+    const result = await fal.subscribe("fal-ai/flux-general/inpainting", {
+      input: {
+        image_url: imageUrl,
+        mask_url: maskUrl,
+        prompt,
+        num_inference_steps: 40,
+        strength: 0.99,
+        guidance_scale: 3.5,
+        num_images: 1,
+        output_format: "jpeg",
+      },
+      logs: true,
+    });
+
+    const outputUrl = (result.data as InpaintingOutput).images?.[0]?.url;
+    if (!outputUrl) {
+      return NextResponse.json(
+        { error: "Inpainting failed" },
+        { status: 500 }
+      );
     }
 
-    console.log("[3/3] Compositing...");
-    const compositeBuf = await compositeWithDepth(
-      imageBuffer,
-      stagedUrl,
-      depthUrl,
-      W,
-      H
-    );
-
-    const compositeUrl = await fal.storage.upload(
-      new File(
-        [compositeBuf.buffer as ArrayBuffer],
-        "staged-composite.jpg",
-        { type: "image/jpeg" }
-      )
-    );
-
-    console.log("[3/3] ✓ Done:", compositeUrl);
-    return NextResponse.json({ imageUrl: compositeUrl });
+    console.log("[3/3] ✓ Done:", outputUrl);
+    return NextResponse.json({ imageUrl: outputUrl });
 
   } catch (err: unknown) {
     console.error("[Pipeline] Error:", err);
