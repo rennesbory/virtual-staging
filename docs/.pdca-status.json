@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-05-27T19:06:59.387Z",
+  "lastUpdated": "2026-05-27T19:12:57.841Z",
   "activeFeatures": [
     "proxy",
     "virtual-staging",
@@ -43,7 +43,7 @@
       "documents": {},
       "timestamps": {
         "started": "2026-05-27T06:05:15.219Z",
-        "lastUpdated": "2026-05-27T19:06:37.321Z"
+        "lastUpdated": "2026-05-27T19:12:57.840Z"
       },
       "lastFile": "/Users/bory/Documents/GitHub/virtual-staging/app/api/generate/route.ts"
     }
@@ -56,7 +56,7 @@
   "session": {
     "startedAt": "2026-05-27T03:45:49.189Z",
     "onboardingCompleted": false,
-    "lastActivity": "2026-05-27T19:06:59.387Z"
+    "lastActivity": "2026-05-27T19:12:57.841Z"
   },
   "history": [
     {
@@ -326,6 +326,12 @@
     {
       "timestamp": "2026-05-27T19:06:59.387Z",
       "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T19:12:57.840Z",
+      "feature": "generate",
       "phase": "do",
       "action": "updated"
     }

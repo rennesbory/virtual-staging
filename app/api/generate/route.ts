@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fal } from "@fal-ai/client";
+import sharp from "sharp";
 
 fal.config({
   credentials:
@@ -12,6 +13,10 @@ fal.config({
 type StagingOutput = {
   images: { url: string; width: number; height: number }[];
   seed: number;
+};
+
+type DepthOutput = {
+  image: { url: string; width: number; height: number };
 };
 
 // ─── Luxury Prompt System (RH / 10M+ market) ─────────────────────────────────
@@ -78,8 +83,74 @@ const BASE_QUALITY =
   "soft diffused natural daylight, warm ambient shadows, " +
   "professional luxury real estate photography for 10 million dollar property";
 
-// ─── Route Handler ────────────────────────────────────────────────────────────
+// ─── Depth-guided compositing ─────────────────────────────────────────────────
+//
+// Midas depth convention: bright = near camera, dark = far.
+//   Near (bright) = floor / foreground  → use STAGED  (furniture lives here)
+//   Far  (dark)   = walls / cabinets    → use ORIGINAL (preserve structure)
+//   Top 20%       = ceiling             → always ORIGINAL
+//
+// Smooth blend in the transition zone to avoid hard seams.
+//
+async function compositeWithDepth(
+  originalBuffer: Buffer,
+  stagedUrl: string,
+  depthUrl: string,
+  W: number,
+  H: number
+): Promise<Buffer> {
+  const [stagedBuf, depthBuf] = await Promise.all([
+    fetch(stagedUrl).then((r) => r.arrayBuffer()).then(Buffer.from),
+    fetch(depthUrl).then((r) => r.arrayBuffer()).then(Buffer.from),
+  ]);
 
+  const [origRaw, stagedRaw, depthRaw] = await Promise.all([
+    sharp(originalBuffer).resize(W, H).removeAlpha().raw().toBuffer(),
+    sharp(stagedBuf).resize(W, H).removeAlpha().raw().toBuffer(),
+    sharp(depthBuf).resize(W, H).greyscale().raw().toBuffer(),
+  ]);
+
+  const out = Buffer.alloc(W * H * 3);
+
+  for (let i = 0; i < W * H; i++) {
+    const p = i * 3;
+    const y = Math.floor(i / W);
+    const yRatio = y / H;
+    const d = depthRaw[i]; // 0–255  bright = near = floor
+
+    let t: number; // 0 = full original, 1 = full staged
+
+    if (yRatio < 0.20) {
+      // Ceiling band — always original
+      t = 0;
+    } else if (d >= 90) {
+      // Bright foreground (floor / furniture zone) — use staged
+      t = 1;
+    } else if (d >= 55) {
+      // Transition zone — smooth linear blend
+      t = (d - 55) / 35;
+    } else {
+      // Dark background (walls, cabinets, windows) — use original
+      t = 0;
+    }
+
+    out[p]     = Math.round(origRaw[p]     * (1 - t) + stagedRaw[p]     * t);
+    out[p + 1] = Math.round(origRaw[p + 1] * (1 - t) + stagedRaw[p + 1] * t);
+    out[p + 2] = Math.round(origRaw[p + 2] * (1 - t) + stagedRaw[p + 2] * t);
+  }
+
+  return sharp(out, { raw: { width: W, height: H, channels: 3 } })
+    .jpeg({ quality: 95 })
+    .toBuffer();
+}
+
+// ─── Route Handler ────────────────────────────────────────────────────────────
+//
+// Pipeline:
+//   1. Upload original image
+//   2. [PARALLEL] apartment-staging + depth map generation
+//   3. Depth-guided compositing (original structure + staged furniture)
+//
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
@@ -94,22 +165,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Step 1: Upload
-    console.log("[1/2] Uploading image...");
-    const imageUrl = await fal.storage.upload(image);
-    console.log("[1/2] ✓", imageUrl);
+    // ── Step 1: Upload ───────────────────────────────────────────────────────
+    console.log("[1/3] Uploading...");
+    const imageBuffer = Buffer.from(await image.arrayBuffer());
+    const { width: W = 1024, height: H = 768 } =
+      await sharp(imageBuffer).metadata();
 
-    // Step 2: Staging
-    console.log("[2/2] Staging room...");
+    const imageUrl = await fal.storage.upload(
+      new File([imageBuffer], image.name, { type: image.type })
+    );
+    console.log(`[1/3] ✓ ${W}×${H}`);
+
+    // ── Step 2: Parallel — staging + depth ──────────────────────────────────
+    console.log("[2/3] Staging + depth (parallel)...");
 
     const prompt =
       `Furnish this room. ${ROOM_PROMPTS[roomType] ?? ROOM_PROMPTS["Living Room"]}. ` +
       `${STYLE_PROMPTS[style] ?? STYLE_PROMPTS["Modern"]}. ` +
       `${BASE_QUALITY}.`;
 
-    const result = await fal.subscribe(
-      "fal-ai/flux-2-lora-gallery/apartment-staging",
-      {
+    const [stagingResult, depthResult] = await Promise.all([
+      fal.subscribe("fal-ai/flux-2-lora-gallery/apartment-staging", {
         input: {
           image_urls: [imageUrl],
           prompt,
@@ -120,23 +196,54 @@ export async function POST(req: NextRequest) {
           output_format: "jpeg",
         },
         logs: true,
-      }
-    );
+      }),
+      fal.subscribe("fal-ai/imageutils/depth", {
+        input: { image_url: imageUrl },
+      }),
+    ]);
 
-    const data = result.data as StagingOutput;
+    const stagedUrl = (stagingResult.data as StagingOutput).images?.[0]?.url;
+    const depthUrl = (depthResult.data as DepthOutput).image?.url;
 
-    if (data.images?.[0]?.url) {
-      console.log("[2/2] ✓ Done:", data.images[0].url);
-      return NextResponse.json({ imageUrl: data.images[0].url });
+    if (!stagedUrl) {
+      return NextResponse.json(
+        { error: "Staging failed" },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(
-      { error: "No image was generated" },
-      { status: 500 }
-    );
-  } catch (err: unknown) {
-    console.error("[Staging] Error:", err);
+    console.log("[2/3] ✓ Staged:", stagedUrl);
+    console.log("[2/3] ✓ Depth:", depthUrl);
 
+    // ── Step 3: Composite — original structure + staged furniture ────────────
+    // If depth map unavailable, fall back to staged image directly
+    if (!depthUrl) {
+      console.log("[3/3] No depth map — returning staged directly");
+      return NextResponse.json({ imageUrl: stagedUrl });
+    }
+
+    console.log("[3/3] Compositing...");
+    const compositeBuf = await compositeWithDepth(
+      imageBuffer,
+      stagedUrl,
+      depthUrl,
+      W,
+      H
+    );
+
+    const compositeUrl = await fal.storage.upload(
+      new File(
+        [compositeBuf.buffer as ArrayBuffer],
+        "staged-composite.jpg",
+        { type: "image/jpeg" }
+      )
+    );
+
+    console.log("[3/3] ✓ Done:", compositeUrl);
+    return NextResponse.json({ imageUrl: compositeUrl });
+
+  } catch (err: unknown) {
+    console.error("[Pipeline] Error:", err);
     const e = err as { status?: number; body?: { detail?: string } };
     if (e.status === 403) {
       return NextResponse.json(
@@ -144,7 +251,6 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
-
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Generation failed" },
       { status: 500 }
