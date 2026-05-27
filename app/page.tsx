@@ -26,8 +26,7 @@ type Style = (typeof STYLES)[number];
 
 const STEPS = [
   "Uploading image...",
-  "Detecting floor area (SAM-3)...",
-  "Generating furniture (FLUX inpainting)...",
+  "Staging room with AI...",
 ];
 
 export default function Home() {
@@ -36,7 +35,6 @@ export default function Home() {
   const [roomType, setRoomType] = useState<RoomType>("Living Room");
   const [style, setStyle] = useState<Style>("Modern");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [maskPreview, setMaskPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +49,6 @@ export default function Home() {
     setOriginalFile(file);
     setOriginalImage(URL.createObjectURL(file));
     setGeneratedImage(null);
-    setMaskPreview(null);
     setError(null);
   }, []);
 
@@ -72,7 +69,6 @@ export default function Home() {
     setError(null);
     setProgress(STEPS[0]);
     setGeneratedImage(null);
-    setMaskPreview(null);
 
     try {
       const formData = new FormData();
@@ -95,7 +91,6 @@ export default function Home() {
 
       if (data.imageUrl) {
         setGeneratedImage(data.imageUrl);
-        if (data.maskUrl) setMaskPreview(data.maskUrl);
         setProgress("");
       } else {
         setError("No image was generated. Please try again.");
@@ -207,7 +202,6 @@ export default function Home() {
               setOriginalImage(null);
               setOriginalFile(null);
               setGeneratedImage(null);
-              setMaskPreview(null);
             }}
             className="mt-2 text-sm text-foreground/50 hover:text-foreground transition-colors"
           >
@@ -318,24 +312,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* Detected mask preview */}
-          {maskPreview && (
-            <details className="mt-4">
-              <summary className="text-sm text-foreground/50 cursor-pointer hover:text-foreground/70">
-                Show detected floor mask
-              </summary>
-              <div className="mt-2 relative w-full max-w-md aspect-video rounded-lg overflow-hidden border border-foreground/10">
-                <Image
-                  src={maskPreview}
-                  alt="Detected floor mask"
-                  fill
-                  className="object-contain"
-                  unoptimized
-                />
-              </div>
-            </details>
-          )}
 
           <button
             onClick={handleDownload}
