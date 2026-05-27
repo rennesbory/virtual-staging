@@ -26,9 +26,7 @@ type Style = (typeof STYLES)[number];
 
 const STEPS = [
   "Uploading image...",
-  "Analyzing room depth...",
-  "Building staging mask...",
-  "Rendering staged room...",
+  "Staging room with AI...",
 ];
 
 export default function Home() {
@@ -37,7 +35,7 @@ export default function Home() {
   const [roomType, setRoomType] = useState<RoomType>("Living Room");
   const [style, setStyle] = useState<Style>("Modern");
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [depthUrl, setDepthUrl] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +70,6 @@ export default function Home() {
     setError(null);
     setProgress(STEPS[0]);
     setGeneratedImage(null);
-    setDepthUrl(null);
 
     try {
       const formData = new FormData();
@@ -95,7 +92,6 @@ export default function Home() {
 
       if (data.imageUrl) {
         setGeneratedImage(data.imageUrl);
-        if (data.depthUrl) setDepthUrl(data.depthUrl);
         setProgress("");
       } else {
         setError("No image was generated. Please try again.");
@@ -317,21 +313,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* Debug: Depth map */}
-          {depthUrl && (
-            <details className="mt-6">
-              <summary className="text-xs text-foreground/40 cursor-pointer hover:text-foreground/60 select-none">
-                ▸ Debug: depth map
-              </summary>
-              <div className="mt-3 max-w-sm">
-                <p className="text-xs text-foreground/40 mb-1">Midas depth map</p>
-                <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-foreground/10">
-                  <Image src={depthUrl} alt="Depth map" fill className="object-contain" unoptimized />
-                </div>
-              </div>
-            </details>
-          )}
 
           <button
             onClick={handleDownload}
