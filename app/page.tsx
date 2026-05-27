@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
 
 const ROOM_TYPES = [
@@ -35,8 +35,10 @@ export default function Home() {
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [roomType, setRoomType] = useState<RoomType>("Living Room");
   const [style, setStyle] = useState<Style>("Modern");
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-
+  
+  // Final generated image URL from Fal AI
+  const [stagedImageUrl, setStagedImageUrl] = useState<string | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export default function Home() {
     }
     setOriginalFile(file);
     setOriginalImage(URL.createObjectURL(file));
-    setGeneratedImage(null);
+    setStagedImageUrl(null);
     setError(null);
   }, []);
 
@@ -70,7 +72,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setProgress(STEPS[0]);
-    setGeneratedImage(null);
+    setStagedImageUrl(null);
 
     try {
       const formData = new FormData();
@@ -92,7 +94,7 @@ export default function Home() {
       }
 
       if (data.imageUrl) {
-        setGeneratedImage(data.imageUrl);
+        setStagedImageUrl(data.imageUrl);
         setProgress("");
       } else {
         setError("No image was generated. Please try again.");
@@ -109,26 +111,29 @@ export default function Home() {
   };
 
   const handleDownload = async () => {
-    if (!generatedImage) return;
-    const response = await fetch(generatedImage);
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}-${style.toLowerCase()}.jpg`;
-    a.click();
-    URL.revokeObjectURL(url);
+    if (!stagedImageUrl) return;
+    try {
+      const response = await fetch(stagedImageUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}-${style.toLowerCase()}.jpg`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed", err);
+    }
   };
 
   return (
     <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8 sm:py-12">
       <header className="text-center mb-10">
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-          Virtual Staging AI
+          Virtual Staging AI <span className="text-yellow-500">Premium</span>
         </h1>
-        <p className="mt-2 text-foreground/60">
-          Upload an empty room photo and AI will auto-detect the floor and add
-          furniture
+        <p className="mt-2 text-foreground/60 max-w-xl mx-auto">
+          Upload an empty or partially furnished room. Our luxury staging AI perfectly preserves the original floors and fixtures while seamlessly integrating high-end furniture.
         </p>
       </header>
 
@@ -182,7 +187,7 @@ export default function Home() {
                 Drag & drop your room photo here, or click to browse
               </p>
               <p className="text-foreground/40 text-xs">
-                Supports JPG, PNG, WebP
+                Supports High-Res JPG, PNG, WebP (Processed on Client GPU)
               </p>
             </div>
           )}
@@ -203,7 +208,7 @@ export default function Home() {
               e.stopPropagation();
               setOriginalImage(null);
               setOriginalFile(null);
-              setGeneratedImage(null);
+              setStagedImageUrl(null);
             }}
             className="mt-2 text-sm text-foreground/50 hover:text-foreground transition-colors"
           >
@@ -269,15 +274,15 @@ export default function Home() {
           onClick={handleGenerate}
           disabled={!originalFile || loading}
           className={`
-            w-full py-3 rounded-xl text-base font-semibold transition-all
+            w-full py-4 rounded-xl text-lg font-semibold transition-all
             ${
               !originalFile || loading
                 ? "bg-foreground/10 text-foreground/30 cursor-not-allowed"
-                : "bg-foreground text-background hover:opacity-90 active:scale-[0.99]"
+                : "bg-foreground text-background hover:opacity-90 active:scale-[0.99] shadow-xl"
             }
           `}
         >
-          {loading ? progress || "Processing..." : "Generate Staged Room"}
+          {loading ? progress || "Processing..." : "Generate Premium Staging"}
         </button>
         {error && (
           <p className="mt-3 text-red-500 text-sm text-center">{error}</p>
@@ -285,42 +290,27 @@ export default function Home() {
       </section>
 
       {/* Results */}
-      {generatedImage && (
-        <section>
-          <h2 className="text-lg font-semibold mb-4">Result</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-foreground/50 mb-2">Before</p>
-              <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-foreground/10">
-                <Image
-                  src={originalImage!}
-                  alt="Original room"
-                  fill
-                  className="object-contain"
-                  unoptimized
-                />
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-foreground/50 mb-2">After</p>
-              <div className="relative w-full aspect-video rounded-xl overflow-hidden border border-foreground/10">
-                <Image
-                  src={generatedImage}
-                  alt="Staged room"
-                  fill
-                  className="object-contain"
-                  unoptimized
-                />
-              </div>
-            </div>
+      {stagedImageUrl && originalImage && (
+        <section className="space-y-6 animate-in fade-in duration-500">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-bold">Staged Result</h2>
+            <button
+              onClick={handleDownload}
+              className="px-6 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+            >
+              Download High-Res
+            </button>
           </div>
 
-          <button
-            onClick={handleDownload}
-            className="mt-4 px-6 py-2 rounded-lg bg-foreground/5 hover:bg-foreground/10 text-sm font-medium transition-colors"
-          >
-            Download Result
-          </button>
+          <div className="p-6 bg-foreground/5 rounded-2xl border border-foreground/10">
+            <div className="relative w-full flex justify-center">
+              <img
+                src={stagedImageUrl}
+                alt="Staged result"
+                className="w-full h-auto max-h-[60vh] object-contain rounded-xl shadow-lg border border-foreground/10"
+              />
+            </div>
+          </div>
         </section>
       )}
     </main>
