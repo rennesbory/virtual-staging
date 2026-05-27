@@ -1,0 +1,165 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-05-27T07:04:03.781Z",
+  "activeFeatures": [
+    "proxy",
+    "virtual-staging",
+    "generate"
+  ],
+  "primaryFeature": "proxy",
+  "features": {
+    "proxy": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-05-27T05:28:38.512Z",
+        "lastUpdated": "2026-05-27T06:03:49.242Z"
+      },
+      "lastFile": "/Users/bory/Documents/GitHub/virtual-staging/app/api/fal/proxy/route.ts"
+    },
+    "virtual-staging": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-05-27T05:28:44.188Z",
+        "lastUpdated": "2026-05-27T06:26:22.765Z"
+      },
+      "lastFile": "/Users/bory/Documents/GitHub/virtual-staging/app/page.tsx"
+    },
+    "generate": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-05-27T06:05:15.219Z",
+        "lastUpdated": "2026-05-27T07:04:03.781Z"
+      },
+      "lastFile": "/Users/bory/Documents/GitHub/virtual-staging/app/api/generate/route.ts"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-05-27T03:45:49.189Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-05-27T07:04:03.781Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-05-27T05:28:38.512Z",
+      "feature": "proxy",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T05:28:44.188Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T05:28:48.768Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T05:30:11.261Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T05:59:57.171Z",
+      "feature": "proxy",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:00:26.519Z",
+      "feature": "proxy",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:01:59.537Z",
+      "feature": "proxy",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:03:49.242Z",
+      "feature": "proxy",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:05:15.219Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:05:41.216Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:06:47.382Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:19:40.837Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:20:38.124Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:25:47.981Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:26:22.765Z",
+      "feature": "virtual-staging",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T06:47:45.458Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-05-27T07:04:03.781Z",
+      "feature": "generate",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}
