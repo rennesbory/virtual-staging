@@ -12,17 +12,7 @@ const ROOM_TYPES = [
   "Bathroom",
 ] as const;
 
-const STYLES = [
-  "Modern",
-  "Minimalist",
-  "Scandinavian",
-  "Industrial",
-  "Mid-Century Modern",
-  "Bohemian",
-] as const;
-
 type RoomType = (typeof ROOM_TYPES)[number];
-type Style = (typeof STYLES)[number];
 
 const STEPS = [
   "Uploading image...",
@@ -34,7 +24,6 @@ export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [roomType, setRoomType] = useState<RoomType>("Living Room");
-  const [style, setStyle] = useState<Style>("Modern");
   
   // Final generated image URL from Fal AI
   const [stagedImageUrl, setStagedImageUrl] = useState<string | null>(null);
@@ -78,7 +67,6 @@ export default function Home() {
       const formData = new FormData();
       formData.append("image", originalFile);
       formData.append("roomType", roomType);
-      formData.append("style", style);
 
       setProgress(STEPS[1]);
 
@@ -118,7 +106,7 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}-${style.toLowerCase()}.jpg`;
+      a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}.jpg`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -238,30 +226,6 @@ export default function Home() {
                 `}
               >
                 {type}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <h2 className="text-sm font-medium mb-3 text-foreground/70">
-            Style
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {STYLES.map((s) => (
-              <button
-                key={s}
-                onClick={() => setStyle(s)}
-                className={`
-                  px-4 py-2 rounded-lg text-sm font-medium transition-all
-                  ${
-                    style === s
-                      ? "bg-foreground text-background"
-                      : "bg-foreground/5 hover:bg-foreground/10 text-foreground/70"
-                  }
-                `}
-              >
-                {s}
               </button>
             ))}
           </div>
