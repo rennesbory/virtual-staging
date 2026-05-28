@@ -12,18 +12,33 @@ const ROOM_TYPES = [
   "Bathroom",
 ] as const;
 
+const STYLES = [
+  "Organic Modern",
+  "Contemporary Luxury",
+  "Transitional Classic",
+] as const;
+
 type RoomType = (typeof ROOM_TYPES)[number];
+type Style = (typeof STYLES)[number];
 
 const STEPS = [
   "Uploading image...",
-  "Analyzing space...",
-  "Placing furniture...",
+  "Staging room with apartment model...",
+  "Refining masked furniture style if LoRA is provided...",
 ];
 
 export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [roomType, setRoomType] = useState<RoomType>("Living Room");
+  const [style, setStyle] = useState<Style>("Organic Modern");
+  const [stagingScale, setStagingScale] = useState<number>(1.0);
+  const [customLoraScale, setCustomLoraScale] = useState<number>(0.65);
+  const [refineStrength, setRefineStrength] = useState<number>(0.25);
+  const [loraUrl, setLoraUrl] = useState("");
+  const [triggerPhrase, setTriggerPhrase] = useState("");
+  const [maskFile, setMaskFile] = useState<File | null>(null);
+  const [maskPreview, setMaskPreview] = useState<string | null>(null);
   
   // Final generated image URL from Fal AI
   const [stagedImageUrl, setStagedImageUrl] = useState<string | null>(null);
@@ -33,6 +48,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const maskInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback((file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -44,6 +60,33 @@ export default function Home() {
     setStagedImageUrl(null);
     setError(null);
   }, []);
+
+  const handleMaskFile = useCallback((file: File) => {
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image mask file.");
+      return;
+    }
+    setMaskFile(file);
+    setMaskPreview(URL.createObjectURL(file));
+    setStagedImageUrl(null);
+    setError(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (originalImage) {
+        URL.revokeObjectURL(originalImage);
+      }
+    };
+  }, [originalImage]);
+
+  useEffect(() => {
+    return () => {
+      if (maskPreview) {
+        URL.revokeObjectURL(maskPreview);
+      }
+    };
+  }, [maskPreview]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -57,6 +100,10 @@ export default function Home() {
 
   const handleGenerate = async () => {
     if (!originalFile) return;
+    if (loraUrl.trim() && !maskFile) {
+      setError("Please upload a furniture mask before using a trained LoRA.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -66,7 +113,16 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append("image", originalFile);
+      if (maskFile) {
+        formData.append("mask", maskFile);
+      }
       formData.append("roomType", roomType);
+      formData.append("style", style);
+      formData.append("loraUrl", loraUrl.trim());
+      formData.append("triggerPhrase", triggerPhrase.trim());
+      formData.append("stagingScale", stagingScale.toString());
+      formData.append("customLoraScale", customLoraScale.toString());
+      formData.append("refineStrength", refineStrength.toString());
 
       setProgress(STEPS[1]);
 
@@ -106,13 +162,15 @@ export default function Home() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}.jpg`;
+      a.download = `staged-${roomType.toLowerCase().replace(/\s+/g, "-")}-${style.toLowerCase().replace(/\s+/g, "-")}.jpg`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Download failed", err);
     }
   };
+
+  const loraNeedsMask = Boolean(loraUrl.trim()) && !maskFile;
 
   return (
     <main className="flex-1 w-full max-w-5xl mx-auto px-4 py-8 sm:py-12">
@@ -121,7 +179,7 @@ export default function Home() {
           Virtual Staging AI <span className="text-yellow-500">Premium</span>
         </h1>
         <p className="mt-2 text-foreground/60 max-w-xl mx-auto">
-          Upload an empty or partially furnished room. Our luxury staging AI perfectly preserves the original floors and fixtures while seamlessly integrating high-end furniture.
+          Preserve the original room with Fal apartment staging, then apply your trained luxury furniture style only inside a mask.
         </p>
       </header>
 
@@ -175,7 +233,7 @@ export default function Home() {
                 Drag & drop your room photo here, or click to browse
               </p>
               <p className="text-foreground/40 text-xs">
-                Supports High-Res JPG, PNG, WebP (Processed on Client GPU)
+                Supports JPG, PNG, and WebP up to 20MB. Processing runs on Fal.
               </p>
             </div>
           )}
@@ -207,6 +265,98 @@ export default function Home() {
 
       {/* Options */}
       <section className="mb-8 space-y-6">
+        <div className="space-y-4 rounded-xl border border-foreground/10 bg-foreground/5 p-4">
+          <div>
+            <label
+              htmlFor="lora-url"
+              className="block text-sm font-medium mb-2 text-foreground/70"
+            >
+              Trained LoRA URL <span className="text-foreground/40">(optional)</span>
+            </label>
+            <input
+              id="lora-url"
+              type="url"
+              value={loraUrl}
+              onChange={(e) => setLoraUrl(e.target.value)}
+              placeholder="https://.../diffusers_lora_file.safetensors"
+              className="w-full rounded-lg border border-foreground/15 bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-foreground/50"
+            />
+            <p className="mt-2 text-xs text-foreground/45">
+              Leave empty to use only Fal apartment-staging. Add a LoRA URL only when you also provide a furniture mask.
+            </p>
+          </div>
+
+          <div>
+            <h2 className="text-sm font-medium mb-2 text-foreground/70">
+              Furniture Mask <span className="text-foreground/40">(required for LoRA)</span>
+            </h2>
+            <button
+              type="button"
+              onClick={() => maskInputRef.current?.click()}
+              className="w-full rounded-lg border border-dashed border-foreground/20 bg-background px-3 py-3 text-sm text-foreground/60 transition-colors hover:border-foreground/40"
+            >
+              {maskFile ? maskFile.name : "Upload mask image: white = furniture editable, black = locked room"}
+            </button>
+            <input
+              ref={maskInputRef}
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleMaskFile(file);
+              }}
+              className="hidden"
+            />
+            {maskPreview && (
+              <div className="mt-3 relative w-full aspect-video rounded-lg overflow-hidden border border-foreground/10 bg-background">
+                <Image
+                  src={maskPreview}
+                  alt="Furniture mask preview"
+                  fill
+                  className="object-contain"
+                  unoptimized
+                />
+              </div>
+            )}
+            {maskFile && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMaskFile(null);
+                  setMaskPreview(null);
+                  setStagedImageUrl(null);
+                }}
+                className="mt-2 text-xs text-foreground/50 hover:text-foreground transition-colors"
+              >
+                Remove mask
+              </button>
+            )}
+            <p className="mt-2 text-xs text-foreground/45">
+              The LoRA refine pass is restricted to this mask so walls, floors, windows, ceiling, and proportions stay locked.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="trigger-phrase"
+              className="block text-sm font-medium mb-2 text-foreground/70"
+            >
+              Trigger Phrase
+            </label>
+            <input
+              id="trigger-phrase"
+              type="text"
+              value={triggerPhrase}
+              onChange={(e) => setTriggerPhrase(e.target.value)}
+              placeholder="Example: mybrand luxury staging"
+              className="w-full rounded-lg border border-foreground/15 bg-background px-3 py-2 text-sm outline-none transition-colors focus:border-foreground/50"
+            />
+            <p className="mt-2 text-xs text-foreground/45">
+              Use the same unique phrase you used in the training captions when LoRA refine is enabled.
+            </p>
+          </div>
+        </div>
+
         <div>
           <h2 className="text-sm font-medium mb-3 text-foreground/70">
             Room Type
@@ -230,17 +380,122 @@ export default function Home() {
             ))}
           </div>
         </div>
+
+        <div>
+          <h2 className="text-sm font-medium mb-3 text-foreground/70">
+            Style
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {STYLES.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStyle(s)}
+                className={`
+                  px-4 py-2 rounded-lg text-sm font-medium transition-all
+                  ${
+                    style === s
+                      ? "bg-foreground text-background"
+                      : "bg-foreground/5 hover:bg-foreground/10 text-foreground/70"
+                  }
+                `}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-sm font-medium text-foreground/70">
+              Apartment Staging Strength
+            </h2>
+            <span className="text-sm font-medium text-foreground/50">
+              {stagingScale.toFixed(2)}x
+            </span>
+          </div>
+          <div className="space-y-2">
+            <input
+              type="range"
+              min="0.5"
+              max="1.5"
+              step="0.05"
+              value={stagingScale}
+              onChange={(e) => setStagingScale(parseFloat(e.target.value))}
+              className="w-full accent-foreground"
+            />
+            <div className="flex justify-between text-xs text-foreground/40 px-1">
+              <span>0.5x (Light staging)</span>
+              <span>1.0x (Balanced)</span>
+              <span>1.5x (Fuller staging)</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-sm font-medium text-foreground/70">
+              Custom LoRA Style Strength
+            </h2>
+            <span className="text-sm font-medium text-foreground/50">
+              {customLoraScale.toFixed(2)}x
+            </span>
+          </div>
+          <div className="space-y-2">
+            <input
+              type="range"
+              min="0.2"
+              max="1.2"
+              step="0.05"
+              value={customLoraScale}
+              onChange={(e) => setCustomLoraScale(parseFloat(e.target.value))}
+              className="w-full accent-foreground"
+            />
+            <div className="flex justify-between text-xs text-foreground/40 px-1">
+              <span>0.2x (Subtle)</span>
+              <span>0.65x (Recommended)</span>
+              <span>1.2x (Strong)</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-sm font-medium text-foreground/70">
+              LoRA Refine Strength
+            </h2>
+            <span className="text-sm font-medium text-foreground/50">
+              {refineStrength.toFixed(2)}
+            </span>
+          </div>
+          <div className="space-y-2">
+            <input
+              type="range"
+              min="0.05"
+              max="0.5"
+              step="0.05"
+              value={refineStrength}
+              onChange={(e) => setRefineStrength(parseFloat(e.target.value))}
+              className="w-full accent-foreground"
+            />
+            <div className="flex justify-between text-xs text-foreground/40 px-1">
+              <span>0.05 (Safer)</span>
+              <span>0.25 (Recommended)</span>
+              <span>0.5 (Riskier)</span>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Generate Button */}
       <section className="mb-10">
         <button
           onClick={handleGenerate}
-          disabled={!originalFile || loading}
+          disabled={!originalFile || loraNeedsMask || loading}
           className={`
             w-full py-4 rounded-xl text-lg font-semibold transition-all
             ${
-              !originalFile || loading
+              !originalFile || loraNeedsMask || loading
                 ? "bg-foreground/10 text-foreground/30 cursor-not-allowed"
                 : "bg-foreground text-background hover:opacity-90 active:scale-[0.99] shadow-xl"
             }
@@ -268,9 +523,12 @@ export default function Home() {
 
           <div className="p-6 bg-foreground/5 rounded-2xl border border-foreground/10">
             <div className="relative w-full flex justify-center">
-              <img
+              <Image
                 src={stagedImageUrl}
                 alt="Staged result"
+                width={1600}
+                height={1000}
+                unoptimized
                 className="w-full h-auto max-h-[60vh] object-contain rounded-xl shadow-lg border border-foreground/10"
               />
             </div>
